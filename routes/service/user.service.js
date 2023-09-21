@@ -166,9 +166,9 @@ router.get('/logout/:user_id', helperFunctions.verifyJWT, (req, res) => {
     });
 });
 
-router.get('/vendors/get/:user_id', helperFunctions.verifyJWT, (req, res) => {
+router.get('/users/get/:user_id', helperFunctions.verifyJWT, (req, res) => {
     let permission = '';
-    if (req.user.role === enums.USER.TYPE.VENDOR)
+    if (req.user.type === enums.USER.TYPE.USER)
         permission = `id = ${req.user.id} AND`;
     let query_condition = `FROM users WHERE ${permission} status = ${enums.USER.STATUS.ACTIVE}`;
     let query = `SELECT id, CONCAT(firstname, ' ', lastname) fullname ${query_condition} ORDER by firstname asc`;
