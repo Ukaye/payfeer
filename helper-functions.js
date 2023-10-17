@@ -1,4 +1,16 @@
+const 
+    enums = require('./enums'),
+    jwt = require('jsonwebtoken');
+
 let functions = {};
+
+functions.generateOTP = () => Math.floor(100000 + Math.random() * 900000);
+
+functions.formatOTP = otp => otp.toString().match(/\d{1,3}/g).join(' ');
+
+functions.formatToNigerianPhone = phone => {
+    return phone ? `234${phone.toString().trim().toLowerCase().substr(-10)}` : '';
+};
 
 functions.verifyJWT = (req, res, next) => {
     let token = req.headers['x-access-token'] || (req.headers.authorization || '').split(" ")[1];;

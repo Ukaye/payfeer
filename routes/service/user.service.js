@@ -8,6 +8,99 @@ const moment = require('moment'),
     emailService = require('./email.service'),
     helperFunctions = require('../../helper-functions');
 
+router.post('/otp/send/:type', (req, res) => {
+    const otp = helperFunctions.generateOTP();
+    const {type} = req.params;
+    const {username} = req.body;
+    if (!username)
+        return res.send({
+            "status": 500,
+            "error": "Required parameter(s) not sent!",
+            "response": null
+        });
+
+    let user = {};
+    user.token = jwt.sign(
+        {
+            username: username,
+            otp: otp
+        },
+        process.env.SECRET_KEY,
+        {
+            expiresIn: 60 * 60 * 24
+        }
+    );
+    user.tenant = process.env.TENANT;
+    user.environment = process.env.STATUS;
+
+    switch (type) {
+        case 'phone': {
+            let sms = {
+                phone: helperFunctions.formatToNigerianPhone(username),
+                message: `To continue your signup, use this OTP ${helperFunctions.formatOTP(otp)}`
+            }
+            helperFunctions.sendSMS(sms, data => {
+                if (data.response.status === 'SUCCESS') {
+                    return res.send({
+                        "status": 200,
+                        "error": null,
+                        "response": user
+                    });
+                } else {
+                    return res.send({
+                        "status": 500,
+                        "error": 'Error sending OTP!',
+                        "response": null
+                    });
+                }
+            });
+            break;
+        }
+        case 'email': {
+            emailService.send({
+                to: username,
+                subject: 'Email Confirmation',
+                template: 'default',
+                context: {
+                    name: username,
+                    message: `To verify your email address, kindly use this OTP: ${otp}`
+                }
+            });
+            return res.send({
+                "status": 200,
+                "error": null,
+                "response": user
+            });
+        }
+    }
+});
+
+router.post('/otp/verify', helperFunctions.verifyJWT, (req, res) => {
+    const {username, otp} = req.body;
+    if (!username || !otp)
+        return res.send({
+            "status": 500,
+            "error": "Required parameter(s) not sent!",
+            "response": null
+        });
+
+    if (
+        Number(req.user.otp) !== Number(otp) || 
+        req.user.username !== username
+    )
+        return res.send({
+            "status": 500,
+            "error": "Invalid OTP!",
+            "response": null
+        });
+
+    res.send({
+        "status": 200,
+        "error": null,
+        "response": "OTP verified!"
+    });
+});
+
 router.post('/create', (req, res) => {
     let payload = req.body,
         query = 'INSERT INTO users Set ?',
@@ -15,13 +108,14 @@ router.post('/create', (req, res) => {
     payload.status = enums.USER.STATUS.ACTIVE;
     payload.date_created = moment().utcOffset('+0100').format('YYYY-MM-DD H:mm:ss a');
     if (!payload.username) payload.username = payload.email;
-    if (!payload.firstname || !payload.lastname || !payload.phone || !payload.email || !payload.password)
+    if (!payload.firstname || !payload.lastname || !payload.phone || !payload.email || !payload.pin || !payload.password)
         return res.send({
             "status": 500,
             "error": "Required parameter(s) not sent!",
             "response": null
         });
 
+    payload.pin = bcrypt.hashSync(payload.pin, parseInt(process.env.SALT_ROUNDS));
     payload.password = bcrypt.hashSync(payload.password, parseInt(process.env.SALT_ROUNDS));
     db.getConnection((err, connection) => {
         if (err) throw err;
