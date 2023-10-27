@@ -1,5 +1,5 @@
-const moment = require('moment'),
-    db = require('../../db'),
+const db = require('../../db'),
+    moment = require('moment'),
     express = require('express'),
     enums = require('../../enums'),
     router = express.Router(),
@@ -15,7 +15,7 @@ router.get('/initiate/:id/:currency', helperFunctions.verifyJWT, async (req, res
         });
 
     const user = await helperFunctions.getUser(id);
-    const response = helperFunctions.initiateCard({
+    const response = await helperFunctions.initiateCard({
         tx_ref: user.id,
         amount: 50,
         payment_options: "card",
@@ -31,7 +31,7 @@ router.get('/initiate/:id/:currency', helperFunctions.verifyJWT, async (req, res
             "status": 200,
             "error": null,
             "response": {
-                link: body.data.link,
+                link: response.data.link,
                 reference: user.id
             }
         });
@@ -39,13 +39,12 @@ router.get('/initiate/:id/:currency', helperFunctions.verifyJWT, async (req, res
     res.send({
         "status": 500,
         "error": null,
-        "response": body.message
+        "response": response.message
     });
 });
 
-router.post('/create/:id', helperFunctions.verifyJWT, async (req, res) => {
-    const {id} = req.params;
-    const {reference} = req.body;
+router.get('/verify/:id/:reference', helperFunctions.verifyJWT, async (req, res) => {
+    const {id, reference} = req.params;
     const response = await helperFunctions.verifyTransaction(reference);
     if (response.status !== "success")
         return res.send({
@@ -56,8 +55,8 @@ router.post('/create/:id', helperFunctions.verifyJWT, async (req, res) => {
 
     let data = response.data ? response.data.card : {};
     data.user_id = id;
-    data.reference = body.data.tx_ref;
-    data.currency = body.data.currency;
+    data.reference = response.data.tx_ref;
+    data.currency = response.data.currency;
     data.status = enums.CARD.STATUS.ACTIVE;
     data.date_created = moment().utcOffset('+0100').format('YYYY-MM-DD h:mm:ss a');
 

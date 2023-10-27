@@ -1,4 +1,4 @@
-const 
+const db = require('./db'),
     enums = require('./enums'),
     request = require('request'),
     bcrypt = require('bcryptjs'),

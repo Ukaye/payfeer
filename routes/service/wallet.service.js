@@ -1,5 +1,5 @@
-const moment = require('moment'),
-    db = require('../../db'),
+const db = require('../../db'),
+    moment = require('moment'),
     express = require('express'),
     router = express.Router(),
     enums = require('../../enums'),
@@ -345,7 +345,8 @@ async (req, res) => {
     }
 });
 
-router.post('/transfer/:id/:wallet_id/:pin/:amount',
+router.post(
+    '/transfer/:id/:wallet_id/:pin/:amount',
     helperFunctions.verifyJWT,
     helperFunctions.checkDuplicate,
 async (req, res) => {
@@ -455,7 +456,8 @@ router.get('/transactions/get/:id', helperFunctions.verifyJWT, (req, res) => {
     });
 });
 
-router.get('/card/topup/:id/:wallet_id/:card_id/:amount',
+router.get(
+    '/card/topup/:id/:wallet_id/:card_id/:amount',
     helperFunctions.verifyJWT, 
     helperFunctions.checkDuplicate,
 async (req, res) => {

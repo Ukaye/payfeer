@@ -1,5 +1,5 @@
-const moment = require('moment'),
-    db = require('../../db'),
+const db = require('../../db'),
+    moment = require('moment'),
     bcrypt = require('bcryptjs'),
     express = require('express'),
     router = express.Router(),
