@@ -28,7 +28,7 @@ router.get('/banks/:currency', async (req, res) => {
     });
 });
 
-router.get('/account/resolve/:account/:bank', async (req, res) => {
+router.get('/account/get/:account/:bank', async (req, res) => {
     const {account, bank} = req.params;
     if (!account || !bank)
         return res.send({
@@ -55,9 +55,9 @@ router.get('/account/resolve/:account/:bank', async (req, res) => {
     });
 });
 
-router.get('/transfer-rates/get/:amount/:source_currency/:destination_currency', async (req, res) => {
-    const {amount, source_currency, destination_currency} = req.params;
-    if (!amount || !source_currency || !destination_currency)
+router.get('/transfer-rates/get/:amount/:from/:to', async (req, res) => {
+    const {amount, from, to} = req.params;
+    if (!amount || !from || !to)
         return res.send({
             "status": 500,
             "error": "Required parameter(s) not sent!",
@@ -71,32 +71,25 @@ router.get('/transfer-rates/get/:amount/:source_currency/:destination_currency',
             "response": null
         });
 
-    if (!enums.WALLET_TRANSACTION.CURRENCY[source_currency])
+    if (!enums.WALLET_TRANSACTION.CURRENCY[from])
         return res.send({
             "status": 500,
             "error": "Unsupported source currency.",
             "response": null
         });
 
-    if (!enums.WALLET_TRANSACTION.CURRENCY[destination_currency])
+    if (!enums.WALLET_TRANSACTION.CURRENCY[to])
         return res.send({
             "status": 500,
             "error": "Unsupported destination currency.",
             "response": null
         });
 
-    const response = await helperFunctions.getTransferRates(amount, source_currency, destination_currency);
-    if (response && response.status === "success")
-        return res.send({
-            "status": 200,
-            "error": null,
-            "response": response.data
-        });
-
+    const response = await helperFunctions.getTransferRates(amount, from, to);
     res.send({
-        "status": 500,
-        "error": response.message || 'An error occurred!',
-        "response": null
+        "status": 200,
+        "error": null,
+        "response": response
     });
 });
 

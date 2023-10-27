@@ -322,12 +322,12 @@ functions.getBanks = currency => {
     })
 };
 
-functions.getTransferRates = (amount, source_currency, destination_currency) => {
+functions.getTransferRates = (amount, from, to) => {
     return new Promise(resolve => {
         request.get(
             {
                 url: `${process.env.FLUTTERWAVE_BASE_URL}/transfers/rates?amount=${amount
-                    }&source_currency=${source_currency}&destination_currency=${destination_currency}`,
+                    }&destination_currency=${from}&source_currency=${to}`,
                 headers: {
                     'Authorization': `Bearer ${process.env.FLUTTERWAVE_SECRET_KEY}`
                 },
