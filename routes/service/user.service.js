@@ -220,10 +220,11 @@ router.post('/login', (req, res) => {
             const token = jwt.sign({
                 id: user.id,
                 username: user.username,
-                fullname: user.firstname,
+                firstname: user.firstname,
+                lastname: user.lastname,
                 email: user.email,
                 phone: user.phone,
-                type: user.type,
+                type: user.type
             },
                 process.env.SECRET_KEY,
                 {
@@ -302,17 +303,25 @@ router.put('/update/:user_id', helperFunctions.verifyJWT, (req, res) => {
     let payload = req.body,
         query = `SELECT * FROM users WHERE id = ${req.params.user_id}`;
     db.query(query, (error, user) => {
-        if (user[0]['id']) delete payload.id;
-        if (user[0]['email']) delete payload.email;
-        if (user[0]['username']) delete payload.username;
-        if (user[0]['password']) delete payload.password;
-
         if (!user[0]) return res.send({
             "status": 500,
             "error": 'User does not exist!',
             "response": null
         });
 
+        user = user[0];
+        if (user.id) delete payload.id;
+        if (user.email) delete payload.email;
+        if (user.username) delete payload.username;
+        if (user.password) delete payload.password;
+        if (user.type) delete payload.type;
+        if (user.status) delete payload.status;
+        if (user.verification) delete payload.verification;
+        if (user.date_created) delete payload.date_created;
+
+        if (payload.pin) payload.pin = bcrypt.hashSync(payload.pin, parseInt(process.env.SALT_ROUNDS));
+        // TO DO BVN VERIFICATION
+        if (payload.bvn) payload.verification = enums.USER.VERIFICATION.VERIFIED;
         payload.date_modified = moment().utcOffset('+0100').format('YYYY-MM-DD H:mm:ss a');
         query = `UPDATE users SET ? WHERE id = ${req.params.user_id}`;
         db.query(query, payload, error => {
@@ -323,10 +332,29 @@ router.put('/update/:user_id', helperFunctions.verifyJWT, (req, res) => {
                     "response": null
                 });
 
+            let client = {
+                ...user,
+                ...payload
+            };                
+            client.token = jwt.sign({
+                id: user.id,
+                username: user.username,
+                firstname: user.firstname,
+                lastname: user.lastname,
+                email: user.email,
+                phone: user.phone,
+                type: user.type
+            },
+                process.env.SECRET_KEY,
+                {
+                    expiresIn: 60 * 60 * 24
+                });
+
             res.send({
                 "status": 200,
                 "error": null,
-                "response": "User details updated"
+                "response": client,
+                "message": "User details updated"
             });
         });
     });

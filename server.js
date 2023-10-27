@@ -11,9 +11,11 @@ let http = require('http'),
 
 const app = express(),
     cors = require('cors'),
-    index_service = require('./routes/service/index.service'),
+    card_service = require('./routes/service/card.service'),
     user_service = require('./routes/service/user.service'),
-    upload_service = require('./routes/service/upload.service');
+    index_service = require('./routes/service/index.service'),
+    upload_service = require('./routes/service/upload.service'),
+    wallet_service = require('./routes/service/wallet.service');
     
 app.use(compression());    
 app.engine('html', require('ejs').renderFile);
@@ -53,8 +55,10 @@ app.use((req, res, next) => {
 });
 
 app.use('/', index_service);
+app.use('/card', card_service);
 app.use('/user', user_service);
 app.use('/upload', upload_service);
+app.use('/wallet', wallet_service);
 app.use('/files', express.static(__dirname + '/files'));
 
 // catch 404 and forward to error handler
