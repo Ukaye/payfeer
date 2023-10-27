@@ -216,7 +216,7 @@ router.post('/webhook', async (req, res) => {
 });
 
 router.post(
-    '/wallet/withdraw/bank/:id/:wallet_id/:pin/:amount',
+    '/withdraw/bank/:id/:wallet_id/:pin/:amount',
     helperFunctions.verifyJWT, 
     helperFunctions.checkDuplicate,
 async (req, res) => {
@@ -343,6 +343,98 @@ async (req, res) => {
             "response": null
         });
     }
+});
+
+router.post('/transfer/:id/:wallet_id/:pin/:amount',
+    helperFunctions.verifyJWT,
+    helperFunctions.checkDuplicate,
+async (req, res) => {
+    const {id, pin, amount, wallet_id} = req.params;
+    const {wallet, description: description_} = req.body;
+    if (!wallet)
+        return res.send({
+            "status": 500,
+            "error": "Required parameter(s) not sent!",
+            "response": null
+        });
+
+    if (!helperFunctions.isValidAmount(amount) || Number(amount) <= 0)
+        return res.send({
+            "status": 500,
+            "error": `Invalid transaction amount! ${amount}`,
+            "response": null
+        });
+    
+    const pin_verified = await helperFunctions.verifyPin(id, pin);
+    if (!pin_verified)
+        return res.send({
+            "status": 500,
+            "error": "Incorrect pin!",
+            "response": null
+        });
+
+    const description = helperFunctions.sanitizeString(description_);
+    const wallet_balance = await helperFunctions.getWalletBalance(wallet_id);
+    if (Number(amount) > Number(wallet_balance))
+        return res.send({
+            "status": 500,
+            "error": "Insufficient funds in wallet!",
+            "response": null
+        });
+
+    const sender_ = await helperFunctions.getWallet(wallet_id);
+    if (!sender_)
+        return res.send({
+            "status": 500,
+            "error": "Sender wallet not found!",
+            "response": null
+        });
+
+    const beneficiary_ = await helperFunctions.getWallet(wallet);
+    if (!beneficiary_)
+        return res.send({
+            "status": 500,
+            "error": "Beneficiary wallet not found!",
+            "response": null
+        });
+
+    const sender = {
+        ...sender_,
+        ...await helperFunctions.getUser(sender_.user_id)
+    };
+    const beneficiary = {
+        ...beneficiary_,
+        ...await helperFunctions.getUser(beneficiary_.user_id)
+    };
+    const reference = `${sender.account}-${Date.now()}`;
+    await helperFunctions.createWalletTransaction({
+        amount,
+        reference,
+        user_id: id,
+        wallet_id: sender.id,
+        currency: sender.currency,
+        type: enums.WALLET_TRANSACTION.TYPE.DEBIT,
+        description: `${description || 'Withdrawal'} | TO ${beneficiary.firstname} ${beneficiary.lastname} ${beneficiary.account}`,
+        date_created: moment().utcOffset('+0100').format('YYYY-MM-DD h:mm:ss a'),
+        category: enums.WALLET_TRANSACTION.CATEGORY.TRANSFER_DEBIT
+    });
+    await helperFunctions.createWalletTransaction({
+        amount,
+        reference,
+        user_id: beneficiary.user_id,
+        wallet_id: beneficiary.id,
+        currency: beneficiary.currency,
+        type: enums.WALLET_TRANSACTION.TYPE.CREDIT,
+        description: `${description || 'Topup'} | FROM ${sender.firstname} ${sender.lastname} ${sender.account}`,
+        date_created: moment().utcOffset('+0100').format('YYYY-MM-DD h:mm:ss a'),
+        category: enums.WALLET_TRANSACTION.CATEGORY.TRANSFER_CREDIT
+    });
+
+    return res.send({
+        "status": 200,
+        "error": null,
+        "response": `Transfer of NGN${amount} paid successfully!`
+    });
 });
 
 router.get('/transactions/get/:id', helperFunctions.verifyJWT, (req, res) => {
