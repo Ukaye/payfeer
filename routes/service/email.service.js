@@ -1,4 +1,5 @@
-let email = {},
+const email = {},
+    db = require('../../db'),
     nodemailer = require('nodemailer'),
     hbs = require('nodemailer-express-handlebars'),
     mailgunTransport = require('nodemailer-mailgun-transport'),
@@ -21,47 +22,19 @@ let email = {},
     transporter = nodemailer.createTransport(transport);
 transporter.use('compile', hbs(options));
 
-email.send = function (mailOptions) {
-    if (!mailOptions.to) return console.log('Email recipient is required!');
-    if (!mailOptions.subject) return console.log('Email subject is required!');
+email.send = async mailOptions => {
+    if (!mailOptions.to || !mailOptions.subject) return;
+    const {email} = await new Promise(resolve => {
+        const query = `SELECT email FROM users WHERE id = ${mailOptions.to}`;
+        db.query(query, (error, user) => resolve(user ? user[0] : {}));
+    });
+    if (!email) return console.log('Email recipient is required!');
+    mailOptions.to = email;
     if (process.env.ADMIN_EMAIL) mailOptions.to = mailOptions.to.concat(`,${process.env.ADMIN_EMAIL}`);
-    mailOptions.from = mailOptions.from || `${process.env.TENANT} <no-reply@app.swiftcoop.com>`;
-    if (mailOptions.tenancy) mailOptions.subject = `${process.env.TENANT}: ${mailOptions.subject}`;
+    mailOptions.from = mailOptions.from || `${process.env.TENANT} <no-reply@${process.env.MAILGUN_DOMAIN}>`;
     transporter.sendMail(mailOptions, error => {
         if (error) console.log(error);
     });
 };
-
-email.sendByDomain = function (domain, mailOptions) {
-    if (!mailOptions.to) return console.log('Email recipient is required!');
-    if (!mailOptions.subject) return console.log('Email subject is required!');
-    if (process.env.ADMIN_EMAIL) mailOptions.to = mailOptions.to.concat(`,${process.env.ADMIN_EMAIL}`);
-    mailgunOptions.auth.domain = domain;
-    transport = mailgunTransport(mailgunOptions);
-    transporter = nodemailer.createTransport(transport);
-    transporter.use('compile', hbs(options));
-
-    mailOptions.from = mailOptions.from || `no-reply@${domain}`;
-    console.log(mailOptions)
-    transporter.sendMail(mailOptions, function(error, info){
-        if (error) console.log(error);
-    });
-}; 
-
-email.sendHtmlByDomain = function(mailOptions) {
-    if (!mailOptions.to) return console.log('Email recipient is required!');
-    if (!mailOptions.subject) return console.log('Email subject is required!');
-    
-    transport = mailgunTransport(mailgunOptions);
-    transporter = nodemailer.createTransport(transport);
-
-    mailOptions.from = mailOptions.from || `${process.env.TENANT} <no-reply@app.swiftcoop.com>`;
-    transporter.sendMail(mailOptions, function(error, info){
-        if (error) {
-            return error
-        }
-        return info
-    });
-}
 
 module.exports = email;

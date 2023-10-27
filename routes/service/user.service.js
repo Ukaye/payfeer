@@ -142,7 +142,7 @@ router.post('/create', (req, res) => {
                         if (!error) {
                             emailService.send({
                                 to: payload.email,
-                                subject: 'Welcome to Payfeer!',
+                                subject: `Welcome to ${process.env.TENANT}!`,
                                 template: 'default',
                                 context: {
                                     name: payload.firstname,

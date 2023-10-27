@@ -3,7 +3,7 @@ const express = require('express'),
     enums = require('../../enums'),
     helperFunctions = require('../../helper-functions');
 
-router.get('/', (req, res) => res.send('You have reached the Payfeer service!'));
+router.get('/', (req, res) => res.send(`You have reached the ${process.env.TENANT} service!`));
 
 router.get('/enums', (req, res) => res.send({
     status: 200,

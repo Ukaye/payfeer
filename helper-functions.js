@@ -19,6 +19,20 @@ functions.sanitizeString = str => (str || '').replace(/[^\w\s]/gi, '').substring
 
 functions.isValidAmount = amount => !isNaN(amount) && !isNaN(parseFloat(amount))
 
+functions.padWithZeroes = function (n, width, z) {
+    z = z || '0';
+    n = n + '';
+    return n.length >= width ? n : new Array(width - n.length + 1).join(z) + n;
+};
+
+functions.numberToCurrencyFormatter = function (value) {
+    if (!value)
+        return value;
+    if (value.constructor === 'String'.constructor)
+        value = parseFloat(value);
+    return value.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,');
+};
+
 functions.verifyJWT = (req, res, next) => {
     let token = req.headers['x-access-token'] || (req.headers.authorization || '').split(" ")[1];;
     if (!token) return res.send({
@@ -48,8 +62,8 @@ functions.verifyJWT = (req, res, next) => {
 
 functions.getUser = user => {
     return new Promise(resolve => {
-        const query = `SELECT id, username, firstname, lastname, email, phone, status FROM users 
-            WHERE id = "${user}" OR username = "${user}" OR email = "${user}" OR phone = "${user}"`;
+        const query = `SELECT id, username, firstname, lastname, email, phone, status, bvn, verification 
+            FROM users WHERE id = "${user}" OR username = "${user}" OR email = "${user}" OR phone = "${user}"`;
         db.query(query, (error, user) => resolve(user ? user[0] : {}));
     });
 };
@@ -109,7 +123,11 @@ functions.getUserWallets = user_id => {
 functions.getWallet = wallet_id => {
     return new Promise(resolve => {
         const query = `SELECT bank, account, currency FROM wallets WHERE id = ${wallet_id} AND status = 1`;
-        db.query(query, (error, response) => resolve(response));
+        db.query(query, (error, wallet) => {
+            if (wallet && wallet[0])
+                return resolve(wallet[0]);
+            resolve(false);
+        });
     });
 };
 
@@ -122,7 +140,7 @@ functions.createWalletTransaction = (transaction) => {
             if (error) console.log(error);
             
             const mailOptions = {
-                to: transaction.userID,
+                to: transaction.user_id,
                 subject: 'Transaction Notification',
                 template: 'default',
                 context: {
@@ -271,6 +289,7 @@ functions.resolveAccount = body => {
 };
 
 functions.initiateTransfer = body => {
+    console.log('[INITIATE TRANSFER PAYLOAD]:', body)
     return new Promise(resolve => {
         request.post(
             {
@@ -286,6 +305,7 @@ functions.initiateTransfer = body => {
                     console.log('[INITIATE TRANSFER ERROR]:', error)
                     return resolve(error)
                 }
+                console.log('[INITIATE TRANSFER RESPONSE]:', body)
                 return resolve(body);
             });
     })
@@ -401,6 +421,7 @@ functions.chargeCard = body => {
                     console.log('[CHARGE CARD ERROR]:', error)
                     return resolve(error)
                 }
+                console.log('[CHARGE CARD RESPONSE]:', body)
                 return resolve(body);
             }
         );

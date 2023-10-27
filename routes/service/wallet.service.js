@@ -3,109 +3,97 @@ const db = require('../../db'),
     express = require('express'),
     router = express.Router(),
     enums = require('../../enums'),
-    emailService = require('./email.service'),
     helperFunctions = require('../../helper-functions');
 
 router.get('/create/:id', helperFunctions.verifyJWT, async (req, res) => {
-    let query = `SELECT firstname, lastname, bvn, verification 
-        FROM clients WHERE status = 1 AND ID = ${id}`;
-    db.query(query, async (error, client) => {
-        if (error) 
-            return res.send({
-                "status": 500,
-                "error": error,
-                "response": null
-            });
-        if (!client[0]) 
-            return res.send({
-                "status": 500,
-                "error": 'User not found!',
-                "response": null
-            });
+    const user = await helperFunctions.getUser(req.params.id);
+    if (user.verification === enums.USER.VERIFICATION.PENDING) 
+        return res.send({
+            "status": 500,
+            "error": 'Your account is pending verification!',
+            "response": null
+        });
 
-        client = client[0];
-
-        if (client.verification === enums.USER.VERIFICATION.VERIFIED) 
-            return res.send({
-                "status": 500,
-                "error": 'Your account is pending verification!',
-                "response": null
-            });
-
-        let wallets = await helperFunctions.getUserWallets(client.id);
-        if (wallets.length) 
-            return res.send({
-                "status": 200,
-                "error": null,
-                "response": wallets,
-                "message": 'User wallet account already exists!'
-            });
-
-        let payload = {
-            firstname: client.firstname,
-            lastname: client.lastname,
-            email: client.email,
-            phonenumber: client.phone,
-            is_permanent: true,
-            bvn: client.bvn,
-            tx_ref: client.id,
-            narration: `${client.firstname} ${client.lastname}`
-        }
-        const ngn = await helperFunctions.createVirtualAccount(payload);
-        if (ngn.status === "success") {
-            wallets.push({
-                currency: enums.WALLET_TRANSACTION.CURRENCY.NGN,
-                bank: ngn.data?.bank_name,
-                account: ngn.data?.account_number
-            });
-        } else {
-            return res.send({
-                "status": 500,
-                "error": ngn.message,
-                "response": null
-            });
-        }
-        
-        delete payload.bvn;
-        payload.currency = enums.WALLET_TRANSACTION.CURRENCY.USD;
-        const usd = await flutterwaveUtil.createVirtualAccount(payload);
-        if (usd.status === "success") {
-            wallets.push({
-                currency: payload.currency,
-                bank: usd.data?.bank_name,
-                account: usd.data?.account_number
-            });
-        } else {
-            return res.send({
-                "status": 500,
-                "error": usd.message,
-                "response": null
-            });
-        }
-
-        const date = moment().utcOffset('+0100').format('YYYY-MM-DD H:mm:ss a');
-        await Promise.all(wallets.map(wallet => {
-            wallet.user_id = client.id;
-            wallet.date_created = date;
-            return new Promise(resolve => {
-                db.query('INSERT INTO wallets SET ?', wallet, error => {
-                    if (error) console.log(error)
-                    resolve();
-                });
-            });
-        }))
-
-        wallets = await helperFunctions.getUserWallets(client.id);
+    let wallets = await helperFunctions.getUserWallets(user.id);
+    if (wallets.length) 
         return res.send({
             "status": 200,
             "error": null,
-            "response": wallets
+            "response": wallets,
+            "message": 'User wallet account already exists!'
         });
+
+    let payload = {
+        firstname: user.firstname,
+        lastname: user.lastname,
+        email: user.email,
+        phonenumber: user.phone,
+        is_permanent: true,
+        bvn: user.bvn,
+        narration: `${user.firstname} ${user.lastname}`
+    }
+    const ngn = await helperFunctions.createVirtualAccount(payload);
+    if (ngn.status === "success") {
+        wallets.push({
+            currency: enums.WALLET_TRANSACTION.CURRENCY.NGN,
+            bank: ngn.data?.bank_name,
+            account: ngn.data?.account_number
+        });
+    } else {
+        return res.send({
+            "status": 500,
+            "error": ngn.message,
+            "response": null
+        });
+    }
+    
+    delete payload.bvn;
+    payload.currency = enums.WALLET_TRANSACTION.CURRENCY.USD;
+    const usd = await helperFunctions.createVirtualAccount(payload);
+    if (usd.status === "success") {
+        wallets.push({
+            currency: payload.currency,
+            bank: usd.data?.bank_name,
+            account: usd.data?.account_number
+        });
+    } else if (
+        usd.message === "Merchant is not approved to generate Virtual USD accounts, please contact support."
+    ) {
+        wallets.push({
+            currency: payload.currency,
+            bank: process.env.TENANT,
+            account: helperFunctions.padWithZeroes(user.id, 10)
+        });
+    } else {
+        return res.send({
+            "status": 500,
+            "error": usd.message,
+            "response": null
+        });
+    }
+
+    const date = moment().utcOffset('+0100').format('YYYY-MM-DD H:mm:ss a');
+    await Promise.all(wallets.map(wallet => {
+        wallet.user_id = user.id;
+        wallet.date_created = date;
+        return new Promise(resolve => {
+            db.query('INSERT INTO wallets SET ?', wallet, error => {
+                if (error) console.log(error)
+                resolve();
+            });
+        });
+    }))
+
+    wallets = await helperFunctions.getUserWallets(user.id);
+    return res.send({
+        "status": 200,
+        "error": null,
+        "response": wallets
     });
 });
 
 router.get('/get/:id', helperFunctions.verifyJWT, async (req, res) => {
-    let wallets = await helperFunctions.getUserWallets(id);
+    let wallets = await helperFunctions.getUserWallets(req.params.id);
     wallets = await Promise.all(wallets.map(async wallet => {
         wallet.balance = await helperFunctions.getWalletBalance(wallet.id);
         return wallet;
@@ -138,8 +126,9 @@ router.post('/webhook', async (req, res) => {
             });
         }
 
-        if (status !== "successful") {
-            console.log("[SETTLEMENT ERROR]:", `Reference ${flw_ref} is not valid!`);
+        const verify_transaction = await helperFunctions.verifyTransaction(flw_ref);
+        if (!verify_transaction || verify_transaction.status !== "success") {
+            console.log('[SETTLEMENT ERROR]:', `Reference ${flw_ref} is not valid!`);
             return res.status(400).send({
                 responseCode: 400,
                 status: "failure"
@@ -184,21 +173,19 @@ router.post('/webhook', async (req, res) => {
                         });
                     }
             
-                    if (wallet[0]) {
-                        const reference = `${wallet[0].account}-${Date.now()}`;
+                    if (wallet[0])
                         await helperFunctions.createWalletTransaction({
                             amount,
                             currency,
-                            reference,
-                            description: `Topup | ${description}`,
+                            reference: flw_ref,
                             wallet_id: wallet[0]['id'],
                             user_id: wallet[0]['user_id'],
+                            description: `Topup | ${description}`,
                             type: enums.WALLET_TRANSACTION.TYPE.CREDIT,
                             date_created: moment().utcOffset('+0100').format('YYYY-MM-DD h:mm:ss a'),
                             category: payment_type === "bank_transfer" ? 
                                 enums.WALLET_TRANSACTION.CATEGORY.BANK_CREDIT : enums.WALLET_TRANSACTION.CATEGORY.CARD_CREDIT
                         });
-                    }
             
                     res.send({
                         responseCode: 200,
@@ -216,7 +203,7 @@ router.post('/webhook', async (req, res) => {
 });
 
 router.post(
-    '/withdraw/bank/:id/:wallet_id/:pin/:amount',
+    '/withdraw/:id/:wallet_id/:pin/:amount',
     helperFunctions.verifyJWT, 
     helperFunctions.checkDuplicate,
 async (req, res) => {
@@ -252,22 +239,21 @@ async (req, res) => {
             "error": "Insufficient funds in wallet!",
             "response": null
         });
-    
-    
-    const banks = await helperFunctions.getBanks(currency);
-    const bank_ = banks.find(e => e.code === bank);
-    if (!bank_)
-        return res.send({
-            "status": 500,
-            "error": "Invalid bank!",
-            "response": null
-        });
 
     const wallet = await helperFunctions.getWallet(wallet_id);
     if (!wallet)
         return res.send({
             "status": 500,
             "error": "Wallet not found!",
+            "response": null
+        });
+
+    const banks = await helperFunctions.getBanks(wallet.currency);
+    const bank_ = banks.find(e => e.code === bank);
+    if (!bank_)
+        return res.send({
+            "status": 500,
+            "error": "Invalid bank!",
             "response": null
         });
 
@@ -296,6 +282,7 @@ async (req, res) => {
     });
 
     let payload = {
+        meta,
         amount,
         reference,
         account_bank: bank,
@@ -305,7 +292,6 @@ async (req, res) => {
         narration: description || 'Wallet Withdrawal',
         beneficiary_name: `${req.user.firstname} ${req.user.lastname}`
     }
-    if (meta) payload = {payload, ...meta}
     let response = await helperFunctions.initiateTransfer(payload)
     if (!response || !response.data)
         return res.send({
@@ -315,14 +301,7 @@ async (req, res) => {
         });
     
     response = await helperFunctions.getTransaction(response.data.id)
-    if (!response || !response.data)
-        return res.send({
-            "status": 500,
-            "error": 'An error occurred!',
-            "response": null
-        });
-
-    if (response.status === "success") {
+    if (response && response.status === "success") {
         res.send({
             "status": 200,
             "error": null,
@@ -332,7 +311,7 @@ async (req, res) => {
         await helperFunctions.createWalletTransaction({
             ...transaction,
             type: enums.WALLET_TRANSACTION.TYPE.CREDIT,
-            description: 'Reversal | FROM PAYFEER',
+            description: `Reversal | FROM ${process.env.TENANT}`,
             date_created: moment().utcOffset('+0100').format('YYYY-MM-DD h:mm:ss a'),
             category: enums.WALLET_TRANSACTION.CATEGORY.REVERSAL
         });
@@ -438,24 +417,6 @@ async (req, res) => {
     });
 });
 
-router.get('/transactions/get/:id', helperFunctions.verifyJWT, (req, res) => {
-    const query = `SELECT * FROM transactions WHERE user_id = ${req.params.id} AND status = 1 ORDER BY id desc`;
-    db.query(query, (error, response) => {
-        if (error) 
-            return res.send({
-                "status": 500,
-                "error": error,
-                "response": null
-            });
-        
-        return res.send({
-            "status": 200,
-            "error": null,
-            "response": response
-        });
-    });
-});
-
 router.get(
     '/card/topup/:id/:wallet_id/:card_id/:amount',
     helperFunctions.verifyJWT, 
@@ -507,7 +468,8 @@ async (req, res) => {
         user_id: id,
         currency: wallet.currency,
         type: enums.WALLET_TRANSACTION.TYPE.CREDIT,
-        description: `Topup | FROM PAYSTACK ${body.data.reference}`,
+        description: `Topup | FROM ${response.data.customer ? 
+            response.data.customer.name : ""} ${response.data.tx_ref}`,
         date_created: moment().utcOffset('+0100').format('YYYY-MM-DD h:mm:ss a'),
         category: enums.WALLET_TRANSACTION.CATEGORY.CARD_CREDIT
     });
@@ -516,6 +478,85 @@ async (req, res) => {
         "status": 200,
         "error": null,
         "response": `Wallet topup of NGN${amount} paid successfully!`
+    });
+});
+
+router.get('/transactions/get/:id', helperFunctions.verifyJWT, (req, res) => {
+    const query = `SELECT * FROM transactions WHERE user_id = ${req.params.id} AND status = 1 ORDER BY id desc`;
+    db.query(query, (error, response) => {
+        if (error) 
+            return res.send({
+                "status": 500,
+                "error": error,
+                "response": null
+            });
+        
+        return res.send({
+            "status": 200,
+            "error": null,
+            "response": response
+        });
+    });
+});
+
+router.get('/transaction/get/:id/:transaction_id', helperFunctions.verifyJWT, (req, res) => {
+    const {transaction_id} = req.params;
+    let query = `SELECT * FROM transactions WHERE id = ${transaction_id} AND status = 1`;
+    db.query(query, async (error, transaction) => {
+        if (error) 
+            return res.send({
+                "status": 500,
+                "error": error,
+                "response": null
+            });
+        if (!transaction || !transaction[0]) 
+            return res.send({
+                "status": 500,
+                "error": "Transaction not found!",
+                "response": null
+            });
+        transaction = transaction[0];
+        delete transaction.status;
+        transaction.meta = {};
+
+        const wallet = await helperFunctions.getWallet(transaction.wallet_id);
+        if (!wallet || !transaction.reference)
+            return res.send({
+                "status": 200,
+                "error": null,
+                "response": transaction
+            });
+
+        transaction.wallet = wallet;
+        switch(transaction.category) {
+            case enums.WALLET_TRANSACTION.CATEGORY.BANK_DEBIT:
+            case enums.WALLET_TRANSACTION.CATEGORY.BANK_CREDIT:
+            case enums.WALLET_TRANSACTION.CATEGORY.CARD_CREDIT: {
+                const response = await helperFunctions.verifyTransaction(transaction.reference);
+                if (response && response.status === "success") 
+                    return res.send({
+                        "status": 200,
+                        "error": null,
+                        "response": {
+                            ...transaction,
+                            meta: response
+                        }
+                    });
+
+                return res.send({
+                    "status": 500,
+                    "error": response.message,
+                    "response": null
+                });
+            }
+            default: {
+                return res.send({
+                    "status": 200,
+                    "error": null,
+                    "response": transaction
+                });
+            }
+        }
     });
 });
 
