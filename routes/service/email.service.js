@@ -25,7 +25,7 @@ transporter.use('compile', hbs(options));
 email.send = async mailOptions => {
     if (!mailOptions.to || !mailOptions.subject) return;
     const {email} = await new Promise(resolve => {
-        const query = `SELECT email FROM users WHERE id = ${mailOptions.to}`;
+        const query = `SELECT email FROM users WHERE id = "${mailOptions.to}" OR email = "${mailOptions.to}" OR username = "${mailOptions.to}"`;
         db.query(query, (error, user) => resolve(user ? user[0] : {}));
     });
     if (!email) return console.log('Email recipient is required!');
