@@ -33,11 +33,11 @@ router.get('/create/:id', helperFunctions.verifyJWT, async (req, res) => {
         narration: `${user.firstname} ${user.lastname}`
     }
     const ngn = await helperFunctions.createVirtualAccount(payload);
-    if (ngn.status === "success") {
+    if (ngn.status === "success" && ngn.data) {
         wallets.push({
             currency: enums.WALLET_TRANSACTION.CURRENCY.NGN,
-            bank: ngn.data?.bank_name,
-            account: ngn.data?.account_number
+            bank: ngn.data.bank_name,
+            account: ngn.data.account_number
         });
     } else {
         return res.send({
@@ -50,11 +50,11 @@ router.get('/create/:id', helperFunctions.verifyJWT, async (req, res) => {
     delete payload.bvn;
     payload.currency = enums.WALLET_TRANSACTION.CURRENCY.USD;
     const usd = await helperFunctions.createVirtualAccount(payload);
-    if (usd.status === "success") {
+    if (usd.status === "success" && usd.data) {
         wallets.push({
             currency: payload.currency,
-            bank: usd.data?.bank_name,
-            account: usd.data?.account_number
+            bank: usd.data.bank_name,
+            account: usd.data.account_number
         });
     } else if (
         usd.message === "Merchant is not approved to generate Virtual USD accounts, please contact support."
